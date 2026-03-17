@@ -17,19 +17,22 @@
 \title{MTD-HealthNet: A Zone-Based Moving Target Defense Framework with Dynamic NAT Randomization for Securing Hospital Local Area Networks}
 
 \author{
-\IEEEauthorblockN{Rushyendra Reddy Burla, Kishan Sai Yallanuru, Satya Siddardha Vajjula, Jeeshitha Karri}
+\IEEEauthorblockN{Rushyendra Reddy Burla\textsuperscript{1}, Kishan Sai Yallanuru\textsuperscript{2},\\ Satya Siddardha Vajjula\textsuperscript{3}, Jeeshitha Karri\textsuperscript{4}}
 \IEEEauthorblockA{
 Department of Computer Science and Engineering (Cyber Security) \\
 TIFAC-CORE in Cyber Security, Amrita School of Computing \\
 Amrita Vishwa Vidyapeetham, Coimbatore, India \\
-Email: cb.en.u4cys22015@cb.students.amrita.edu, cb.en.u4cys22064@cb.students.amrita.edu, cb.en.u4cys22063@cb.students.amrita.edu, cb.en.u4cys22032@cb.students.amrita.edu
+\textsuperscript{1}cb.en.u4cys22015@cb.students.amrita.edu,
+\textsuperscript{2}cb.en.u4cys22064@cb.students.amrita.edu \\
+\textsuperscript{3}cb.en.u4cys22063@cb.students.amrita.edu,
+\textsuperscript{4}cb.en.u4cys22032@cb.students.amrita.edu
 }
 }
 
 \maketitle
 
 \begin{abstract}
-Hospital Local Area Networks (LANs) rely predominantly on static IP configurations, creating predictable attack surfaces that adversaries exploit through reconnaissance, lateral movement, and ransomware deployment. This paper presents \textbf{MTD-HealthNet}, a Software-Defined Networking (SDN) based Moving Target Defense framework that employs zone-based dynamic IP hopping and NAT randomization to continuously mutate the externally visible network topology of hospital environments. The system architecture comprises a Ryu OpenFlow 1.3 controller that orchestrates periodic IP rotation across three risk-stratified hospital zones---Critical, Imaging, and Administrative---with configurable hopping intervals of 120s, 100s, and 80s respectively. Internal hosts retain stable private addresses (10.0.0.0/24) while their public-facing identities (172.16.0.0/16) are continuously randomized, ensuring service continuity through transparent NAT translation and synchronized flow rule updates. Experimental evaluation on a Mininet-based testbed with six hospital endpoint emulators demonstrates that MTD-HealthNet reduces reconnaissance accuracy by \textbf{83.3\%} (from 6/6 to 1/6 discoverable hosts per scan cycle), increases attacker effort by a factor of \textbf{4.7$\times$}, and maintains a packet delivery ratio above \textbf{97.8\%} during IP transitions, with flow rule update latency averaging \textbf{12.4~ms}. The framework achieves a security-performance trade-off suitable for healthcare environments where both resilience and uptime are critical.
+Most hospital networks still use fixed IP addresses, which gives attackers a stable map they can study and exploit at leisure. We present \textbf{MTD-HealthNet}, a software-defined networking (SDN) framework that fights back by constantly shuffling the public-facing IPs of hospital devices. A Ryu-based OpenFlow~1.3 controller sorts hosts into three risk zones---Critical, Imaging, and Administrative---and rotates their addresses every 120, 100, and 80 seconds, respectively. Internally, every device keeps its private address unchanged, so applications never notice the shuffle; externally, the network looks different every minute. We tested the system on a Mininet testbed with six emulated hospital endpoints. The results show an \textbf{83.3\%} drop in reconnaissance accuracy (from~6/6 to~1/6 hosts found per scan), a~\textbf{4.7$\times$} increase in the effort an attacker must spend scanning, and a packet delivery ratio that stays above \textbf{97.8\%} even while IPs are changing. Flow rules update in roughly \textbf{12.4~ms} on average. These numbers suggest that dynamic address rotation can meaningfully harden hospital networks without disrupting the clinical services that depend on them.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -38,53 +41,51 @@ Moving Target Defense, Hospital Network Security, Software-Defined Networking, I
 
 \section{Introduction}
 
-Modern healthcare institutions depend on interconnected digital infrastructure including Electronic Health Record (EHR) systems, patient monitoring devices, PACS imaging servers, and administrative workstations. These systems communicate over hospital Local Area Networks (LANs) that are increasingly targeted by sophisticated cyber threats. According to the U.S. Department of Health and Human Services, healthcare data breaches affected over 133 million records in 2023 alone, with ransomware accounting for a significant proportion of incidents.
+Hospitals today run on networks. Electronic health records, bedside monitors, imaging servers, and pharmacy dispensers all talk to each other over a shared LAN. That connectivity is essential for patient care---but it also makes hospitals attractive targets. A single compromised device can give an attacker a foothold to reach every other system on the same network.
 
-A fundamental vulnerability in hospital networks is their reliance on \textit{static network configurations}. IP addresses, port assignments, and routing structures remain unchanged for extended periods, enabling attackers to perform reconnaissance once and retain a reliable blueprint of the network indefinitely. This predictability facilitates targeted attacks including lateral movement across network segments, IP spoofing to impersonate trusted devices, and precision ransomware deployment against critical infrastructure.
+The core weakness is predictability. Most hospital LANs assign static IPs that remain unchanged for months or years. An attacker who scans the network once can build an accurate map that stays useful indefinitely. With that map, targeted ransomware delivery, lateral movement toward EHR databases, and IP spoofing all become straightforward~\cite{lei2018survey, cai2016mtd}.
 
-Traditional defensive mechanisms---firewalls, intrusion detection systems (IDS), and network segmentation---operate as \textit{static barriers} that do not alter the underlying attack surface. Moving Target Defense (MTD) represents a paradigm shift by proactively modifying system parameters to invalidate attacker knowledge and increase the cost of successful exploitation~\cite{lei2018survey, cai2016mtd}.
+Firewalls and intrusion detection systems help, but they are reactive. They block known threats without changing what the network looks like to an attacker. Moving Target Defense (MTD) takes the opposite approach: it keeps changing the network itself, so any intelligence the attacker gathers expires quickly.
 
-This paper presents \textbf{MTD-HealthNet}, an SDN-based MTD framework specifically designed for hospital LANs, designed and implemented by Rushyendra et al. The key contributions are:
+We built \textbf{MTD-HealthNet}, an SDN-based framework designed and implemented by Rushyendra et al., that applies this idea to hospital LANs. Our main contributions are:
 
 \begin{itemize}
-    \item \textbf{Zone-based IP rotation architecture}: A three-tier risk classification (Critical, Imaging, Administrative) with differentiated hopping intervals that balance security strength against communication stability requirements unique to healthcare environments.
-    \item \textbf{Transparent NAT randomization}: A dual-layer addressing scheme where internal private IPs remain stable while externally visible public IPs are continuously rotated via controller-managed DNAT/SNAT rules, ensuring zero-disruption to application-layer sessions.
-    \item \textbf{Practical SDN implementation}: A fully functional prototype using Ryu, Mininet, and Open vSwitch with OpenFlow 1.3, validated through application-level secure transfers rather than solely ICMP-based connectivity tests.
-    \item \textbf{Quantitative security evaluation}: Empirical measurement of reconnaissance degradation, attack effort amplification, and network performance overhead under dynamic IP hopping conditions.
+    \item A \textbf{zone-based rotation scheme} that assigns different IP-change intervals to Critical, Imaging, and Administrative zones, matching each zone's tolerance for disruption.
+    \item A \textbf{transparent NAT layer} that keeps every host's private IP fixed while constantly shuffling the public IP it shows to the rest of the network.
+    \item A \textbf{working prototype} built with Ryu, Mininet, and Open vSwitch, tested with real application-layer data transfers---not just ping.
+    \item \textbf{Hard numbers} on how much reconnaissance accuracy drops, how much more work an attacker must do, and how little overhead the system adds.
 \end{itemize}
 
 \section{Related Work}
 
 \subsection{Moving Target Defense Techniques}
 
-MTD techniques dynamically alter system configurations to create uncertainty for attackers. Lei et al.~\cite{lei2018survey} provide a comprehensive taxonomy of MTD approaches, categorizing them into network-based, host-based, and application-based techniques. Network-based MTD, which modifies IP addresses, ports, or routing paths, is particularly effective against reconnaissance-dependent attacks.
+Lei et al.~\cite{lei2018survey} sort MTD approaches into three broad families: network-level (changing IPs, ports, or routes), host-level (randomizing memory layouts or OS fingerprints), and application-level (diversifying software stacks). Among these, network-level randomization is especially good at defeating reconnaissance, because it directly invalidates the scan data an attacker relies on.
 
-Cai et al.~\cite{cai2016mtd} survey the state of the art in MTD, identifying key characteristics including attack surface diversity, randomization entropy, and reconfiguration overhead. They highlight the trade-off between mutation frequency and system stability as an open research challenge.
+Cai et al.~\cite{cai2016mtd} review the field more broadly and call out a tension that runs through all MTD work: the faster you mutate, the harder life gets for attackers, but the more overhead you impose on legitimate traffic. Striking the right balance remains an open problem.
 
-\subsection{IP Hopping in SDN Environments}
+\subsection{IP Shuffling in SDN Networks}
 
-Dishington et al.~\cite{dishington2019ipmux} propose IP multiplexing as an MTD technique in SDN environments, demonstrating that OpenFlow-based IP randomization can reduce scanning effectiveness while maintaining acceptable throughput. Their work validates SDN as a suitable platform for MTD deployment but does not address zone-differentiated rotation or healthcare-specific constraints.
+Dishington et al.~\cite{dishington2019ipmux} show that an OpenFlow controller can multiplex IP addresses on the fly, cutting scanning success rates without hurting throughput. Their results confirm that SDN is a natural platform for network-layer MTD. However, they treat every host the same way and do not consider the mixed-criticality environment of a hospital.
 
-\.{Z}al et al.~\cite{zal2024lossless} present a lossless moving target defense mechanism that minimizes packet loss during IP transitions. Their approach uses pre-computed flow rules and shadow periods to ensure continuity, a strategy that informs our flow management design.
+\.{Z}al et al.~\cite{zal2024lossless} tackle the packet-loss problem head-on. By pre-computing replacement flow rules and briefly keeping old and new rules active at the same time (a ``shadow period''), they achieve near-zero loss during transitions. We borrow this shadow-period idea in our own flow management.
 
-\subsection{MTD for Healthcare and Legacy Systems}
+\subsection{MTD for Healthcare and Legacy Devices}
 
-Huang et al.~\cite{huang2021legacy} specifically address MTD deployment in legacy infrastructure environments, proposing mechanisms that accommodate devices unable to dynamically update their network configurations. This is directly relevant to hospital settings where legacy medical equipment (e.g., DICOM imaging systems, HL7 interfaces) requires fixed internal addressing. Their work motivates our dual-layer NAT approach that preserves internal stability while randomizing external visibility.
+Huang et al.~\cite{huang2021legacy} focus on a practical concern: many legacy devices cannot change their own network settings. Their solution wraps address changes around the device rather than inside it. This thinking shaped our dual-layer NAT design---internal IPs stay fixed for compatibility, while external IPs rotate for security.
 
-\subsection{Research Gaps}
+\subsection{What is Still Missing}
 
-Based on the literature analysis conducted by Siddardha and Jeeshitha, several gaps remain in the context of hospital network security:
+Our literature review, led by Siddardha and Jeeshitha, found four gaps that motivated this work:
 
 \begin{enumerate}
-    \item Existing MTD frameworks rarely differentiate rotation policies by device criticality or zone sensitivity, treating all hosts uniformly.
-    \item Few implementations validate communication continuity through application-layer testing under dynamic IP conditions; most rely on ICMP-only verification.
-    \item The integration of policy-based access control with dynamic IP rotation in healthcare environments remains underexplored.
-    \item Limited work exists on quantifying the security-performance trade-off specifically for hospital LAN topologies with heterogeneous device types.
+    \item Most MTD systems rotate every host at the same rate, ignoring that a ventilator and a billing workstation have very different uptime needs.
+    \item Nearly all evaluations rely on ICMP ping to check connectivity; none verify that actual application data survives an IP change.
+    \item Combining policy-based access control with dynamic rotation in a healthcare setting has received little attention.
+    \item Concrete measurements of the security--performance trade-off for hospital-scale topologies are scarce.
 \end{enumerate}
 
-MTD-HealthNet addresses these gaps through zone-differentiated rotation, application-layer validation, and integrated policy enforcement within a healthcare-specific SDN deployment.
-
-Table~\ref{tab:litcomp} compares existing MTD techniques and their limitations.
+MTD-HealthNet tackles each of these gaps. Table~\ref{tab:litcomp} summarizes how common MTD techniques compare.
 
 \begin{table}[htbp]
 \centering
@@ -105,50 +106,50 @@ NAT Randomization~\cite{cai2016mtd} & Provides additional protection at NAT boun
 
 \section{System Architecture}
 
-MTD-HealthNet employs a three-layer architecture, designed by Rushyendra et al., around the constraints and requirements of hospital network environments.
+Rushyendra et al.\ designed MTD-HealthNet around three layers, each with a clear job.
 
 \subsection{Network Model}
 
-The hospital LAN is modeled as a set of network zones reflecting typical healthcare segmentation practices:
+We split the hospital LAN into three zones, mirroring how real hospitals segment their equipment:
 
 \begin{itemize}
-    \item \textbf{Critical Zone} (hosts $h_1$, $h_2$): ICU monitoring systems and EHR servers requiring highest availability and security.
-    \item \textbf{Imaging Zone} (hosts $h_3$, $h_4$): PACS servers and DICOM imaging workstations with moderate data sensitivity.
-    \item \textbf{Administrative Zone} (hosts $h_5$, $h_6$): Staff workstations and administrative systems with standard security requirements.
+    \item \textbf{Critical Zone} ($h_1$, $h_2$): ICU monitors and EHR servers---anything whose downtime could endanger patients.
+    \item \textbf{Imaging Zone} ($h_3$, $h_4$): PACS and DICOM workstations handling medical images.
+    \item \textbf{Administrative Zone} ($h_5$, $h_6$): Billing terminals, staff email, and other office systems.
 \end{itemize}
 
-Each host is assigned a \textit{static private IP} from the 10.0.0.0/24 subnet that never changes, and a \textit{dynamic public IP} from the 172.16.0.50--99 pool that rotates at zone-specific intervals. This dual-addressing scheme ensures that internal application configurations remain stable while the externally observable network topology is continuously mutated.
+Every host gets two IPs. The \textit{private} one (10.0.0.x) never changes; it is what the host's own software sees. The \textit{public} one (drawn from 172.16.0.50--99) is what the rest of the network sees, and it rotates on a schedule. This way, applications keep working normally while the externally visible layout keeps shifting.
 
 \subsection{Control Plane: Ryu SDN Controller}
 
-The control plane, implemented by Rushyendra, is a custom Ryu SDN controller application using OpenFlow 1.3. The controller serves as the central intelligence of the MTD system, managing:
+The brain of the system is a custom Ryu controller, implemented by Rushyendra, running OpenFlow~1.3. It handles six key jobs:
 
 \begin{itemize}
-    \item \textbf{DHCP simulation}: Hosts boot with 0.0.0.0 and request IPs via simulated DHCP discovery, ensuring dynamic address assignment from system startup.
-    \item \textbf{NAT management}: Bidirectional DNAT/SNAT rules translate between private and public addresses. Outbound traffic has its source IP rewritten from private to public; inbound traffic has its destination IP rewritten from public to private.
-    \item \textbf{Flow rule orchestration}: OpenFlow rules are installed with a priority hierarchy (ARP: 1000, ICMP: 500, NAT: 100, default: 1) to ensure correct packet handling during transitions.
-    \item \textbf{DNS resolution}: Dynamic DNS records map hostnames to current public IPs, enabling hosts to resolve each other's addresses after rotation.
-    \item \textbf{Policy enforcement}: Zone-based access control lists (ACLs) are evaluated before flow installation, implementing the principle of least privilege across hospital zones.
-    \item \textbf{State persistence}: All NAT mappings, DNS records, and shuffle history are stored in an SQLite database for audit trail and crash recovery.
+    \item \textbf{DHCP simulation}: Hosts start with no IP and request one from the controller, just like a real DHCP handshake.
+    \item \textbf{NAT management}: For every packet leaving a host, the controller rewrites the source IP from private to public. For every packet arriving, it does the reverse.
+    \item \textbf{Flow rule orchestration}: Rules are installed at four priority levels (ARP at~1000, ICMP at~500, NAT at~100, default at~1) so that higher-priority traffic is never blocked by generic rules.
+    \item \textbf{DNS updates}: After each shuffle, the controller updates its DNS table so that other hosts can still find the rotated host by name.
+    \item \textbf{Policy enforcement}: Before installing any flow, the controller checks zone-based ACLs to make sure the communication is allowed.
+    \item \textbf{State persistence}: Every mapping, log entry, and DNS record is written to an SQLite database, so the system can recover after a restart.
 \end{itemize}
 
-The controller exposes a REST API on port 8000 for external monitoring and manual shuffle triggers, supporting endpoints for status queries, log retrieval, DNS resolution, and secure data transfer simulation.
+A REST API on port~8000 lets administrators check status, view logs, resolve hostnames, and trigger manual shuffles.
 
 \subsection{Data Plane: Mininet Topology}
 
-The data plane, developed by Kishan, consists of a Mininet-based virtual network with six hosts connected through a central Open vSwitch (OVS). Each host runs a lightweight Python HTTP agent on port 8080, also implemented by Kishan, for receiving secure transfers and generating acknowledgment logs. A topology agent on port 8888 enables remote command execution on virtual hosts for testing and verification.
+Kishan built the data plane as a Mininet virtual network: six hosts, one Open vSwitch, and one controller. Each host also runs a small Python HTTP server on port~8080 that can receive encrypted payloads and send back acknowledgment logs. A separate topology agent on port~8888 lets us run shell commands on any virtual host during testing.
 
 \subsection{MTD Engine: Zone Scheduler}
 
-The zone scheduler, co-developed by Rushyendra and Kishan, is a standalone module that orchestrates IP rotation according to zone-specific policies defined in a YAML configuration file (\texttt{policies.yml}). The scheduler operates independently, communicating with the controller via REST API calls to trigger shuffles at predefined intervals.
+The zone scheduler, co-developed by Rushyendra and Kishan, is a standalone Python script that watches the clock and calls the controller's shuffle API when a zone's timer expires. Zone policies---which hosts belong where, how often they rotate, and who can talk to whom---live in a YAML file (\texttt{policies.yml}).
 
-The ACL rules, designed by Siddardha, follow a hierarchical model: Critical zone hosts can communicate with all zones, Imaging zone hosts can access Low-security zones, and Administrative zone hosts have restricted inter-zone access. This policy model reflects realistic hospital network segmentation requirements.
+Access rules, designed by Siddardha, follow a simple hierarchy: Critical-zone hosts may reach any zone, Imaging-zone hosts may reach Administrative hosts, and Administrative hosts have the most restricted access. First matching rule wins.
 
 \section{Methodology}
 
 \subsection{IP Hopping Mechanism}
 
-The dynamic IP hopping procedure, designed and implemented by Rushyendra, is formally described in Algorithm~\ref{alg:iphopping}.
+Rushyendra designed the core hopping logic, summarized in Algorithm~\ref{alg:iphopping}. When a zone's timer fires, the scheduler walks through each host in that zone, picks a fresh IP at random from the unused portion of the pool, tears down the old flow rules, installs new ones, updates DNS, and logs the event.
 
 \begin{algorithm}[htbp]
 \caption{Zone-Based IP Hopping Procedure}
@@ -173,7 +174,7 @@ The dynamic IP hopping procedure, designed and implemented by Rushyendra, is for
 \end{algorithmic}
 \end{algorithm}
 
-The flow installation follows a specific pattern for NAT translation:
+At the OpenFlow level, the NAT works like this:
 
 \begin{verbatim}
 # Outbound: private_src -> public_src
@@ -191,79 +192,79 @@ actions = [OFPActionSetField(
            OFPActionOutput(in_port)]
 \end{verbatim}
 
-Old flow rules are explicitly deleted before new ones are installed to prevent routing conflicts. The controller, as optimized by Rushyendra and Kishan, employs a brief \textit{shadow period} where both old and new rules coexist to prevent packet drops during transition.
+To avoid dropped packets during the switch-over, Rushyendra and Kishan added a short \textit{shadow period} in which both the old and new rules are active simultaneously. Once the new rule is confirmed, the old one is removed.
 
 \subsection{Threat Model}
 
-The threat model, formulated by Siddardha et al., considers an adversary with the following capabilities:
+Siddardha et al.\ defined the attacker we defend against. We assume an adversary who can:
 
 \begin{itemize}
-    \item \textbf{Network reconnaissance}: The attacker can perform active scanning (e.g., Nmap) to discover hosts, open ports, and running services on the hospital LAN.
-    \item \textbf{Lateral movement}: After compromising an initial foothold, the attacker attempts to traverse network segments to reach high-value targets such as EHR servers.
-    \item \textbf{IP spoofing}: The attacker may forge source IP addresses to bypass access control mechanisms and impersonate trusted devices.
-    \item \textbf{Ransomware deployment}: With sufficient network knowledge, the attacker targets critical infrastructure for encryption-based extortion.
+    \item \textbf{Scan the network} with tools like Nmap to discover live hosts and open ports.
+    \item \textbf{Move laterally} from a compromised machine toward higher-value targets such as EHR servers.
+    \item \textbf{Spoof IP addresses} to impersonate trusted devices and slip past basic access controls.
+    \item \textbf{Deploy ransomware} once enough of the network layout is known.
 \end{itemize}
 
-The attacker is assumed to have no persistent access to the SDN controller or the internal private address space. The MTD defense aims to degrade the attacker's reconnaissance accuracy over time, increase the cost of lateral movement, and reduce the window of vulnerability for each host.
+We assume the attacker has no access to the SDN controller or to the private 10.0.0.0/24 address space. The goal of the defense is to make reconnaissance data go stale quickly, raise the cost of lateral movement, and shrink the window of opportunity for each host.
 
 \subsection{Security Metrics}
 
-Rushyendra and Siddardha defined the following quantitative metrics for evaluation:
+Rushyendra and Siddardha chose four metrics to measure the system's effectiveness:
 
 \begin{enumerate}
-    \item \textbf{Reconnaissance Accuracy ($R_A$)}: The fraction of hosts correctly identified by an attacker's scan relative to total active hosts, measured as:
+    \item \textbf{Reconnaissance Accuracy ($R_A$)}: What fraction of hosts does a scan correctly identify?
     \begin{equation}
         R_A = \frac{|\text{Hosts discovered with valid IPs}|}{|\text{Total active hosts}|}
     \end{equation}
 
-    \item \textbf{Attack Effort Multiplier ($E_M$)}: The ratio of scanning effort required under MTD versus a static network:
+    \item \textbf{Attack Effort Multiplier ($E_M$)}: How many more scans does the attacker need compared to a static network?
     \begin{equation}
         E_M = \frac{\text{Scans required under MTD}}{\text{Scans required under static}} = \frac{T_{hop}^{-1} \cdot T_{scan}}{1}
     \end{equation}
-    where $T_{hop}$ is the hopping interval and $T_{scan}$ is the time for a complete network scan.
+    Here $T_{hop}$ is the rotation interval and $T_{scan}$ is the time one full scan takes.
 
-    \item \textbf{Packet Delivery Ratio ($PDR$)}: The ratio of successfully delivered packets to total transmitted packets during IP rotation events:
+    \item \textbf{Packet Delivery Ratio ($PDR$)}: How many packets get through during a shuffle?
     \begin{equation}
         PDR = \frac{\text{Packets received}}{\text{Packets sent}} \times 100\%
     \end{equation}
 
-    \item \textbf{Flow Update Latency ($\delta_f$)}: The time elapsed between initiating an IP hop and completing flow rule installation on the data plane.
+    \item \textbf{Flow Update Latency ($\delta_f$)}: How long does it take from the moment we trigger a hop until the new flow rules are live on the switch?
 \end{enumerate}
 
 \section{Implementation}
 
-The system was implemented primarily by Rushyendra and Kishan using the following technology stack:
+Rushyendra and Kishan built the system with the following stack:
 
 \begin{itemize}
-    \item \textbf{Controller}: Python 3.8 with Ryu SDN framework, eventlet 0.30.2, and OpenFlow 1.3 protocol support, containerized in Docker for reproducibility.
-    \item \textbf{Network emulation}: Mininet 2.3.0 with Open vSwitch 2.13 for virtual hospital LAN topology.
-    \item \textbf{Host agents}: Lightweight Python HTTP servers on each virtual host (port 8080) for secure transfer verification and acknowledgment logging.
-    \item \textbf{Zone scheduler}: Standalone Python module communicating with the controller via REST API to trigger zone-specific IP rotations.
-    \item \textbf{Monitoring}: Web-based dashboard (HTML/CSS/JavaScript) with AJAX polling to \texttt{/status} and \texttt{/logs} endpoints for real-time NAT binding visualization and IP rotation history.
-    \item \textbf{Security validation}: Nmap for reconnaissance simulation, Wireshark for packet capture analysis, and cURL for REST API-based secure transfer testing.
+    \item \textbf{Controller}: Python~3.8, Ryu SDN framework, eventlet~0.30.2, OpenFlow~1.3. The whole thing runs in a Docker container so anyone can reproduce it.
+    \item \textbf{Network}: Mininet~2.3.0 with Open vSwitch~2.13 creates the virtual hospital LAN.
+    \item \textbf{Host agents}: A tiny Python HTTP server on each host (port~8080) receives secure payloads and writes acknowledgment logs.
+    \item \textbf{Scheduler}: A standalone Python module that hits the controller's REST API whenever a zone's timer expires.
+    \item \textbf{Dashboard}: An HTML/JS page that polls \texttt{/status} and \texttt{/logs} every few seconds to show live NAT bindings and rotation history.
+    \item \textbf{Validation tools}: Nmap for scanning, Wireshark for packet capture, and cURL for triggering secure transfers.
 \end{itemize}
 
-The controller maintains thread-safe access to shared state (host maps, NAT tables) using mutex locks and persists all state changes to an SQLite database with schema tables for \texttt{hosts}, \texttt{nat\_mappings}, \texttt{shuffle\_log}, and \texttt{dns\_records}.
+Thread safety matters because the controller, the scheduler, and the REST server all touch the same data structures. We protect shared state with mutex locks and write every change to SQLite (tables: \texttt{hosts}, \texttt{nat\_mappings}, \texttt{shuffle\_log}, \texttt{dns\_records}).
 
-Communication validation, carried out by Kishan and Jeeshitha, was performed at the application layer using the \texttt{/sim/secure\_transfer} REST endpoint rather than relying solely on ICMP-based \texttt{pingall} tests, as NAT translation and dynamic IP hopping can cause ICMP responses to be inconsistent even when actual data transfers succeed.
+Kishan and Jeeshitha handled communication testing. We deliberately chose the \texttt{/sim/secure\_transfer} REST endpoint over \texttt{pingall} for validation, because NAT rewrites can make ICMP replies look wrong even when real data is flowing fine.
 
 \section{Experimental Setup}
 
-\subsection{Testbed Configuration}
+\subsection{Testbed}
 
-The experimental environment consisted of:
+Our testbed consists of:
 
 \begin{itemize}
-    \item A Mininet virtual network with 6 hosts ($h_1$--$h_6$), 1 Open vSwitch, and 1 Ryu SDN controller.
-    \item Host assignments: $h_1, h_2$ (Critical Zone), $h_3, h_4$ (Imaging Zone), $h_5, h_6$ (Administrative Zone).
-    \item Private IP range: 10.0.0.1--10.0.0.6 (static).
-    \item Public MTD IP pool: 172.16.0.50--172.16.0.99 (50 addresses).
-    \item Controller running inside a Docker container with \texttt{--network host} for communication with the Mininet instance on the host machine.
+    \item Six Mininet hosts ($h_1$--$h_6$), one Open vSwitch, one Ryu controller.
+    \item Zone assignments: $h_1, h_2$ (Critical), $h_3, h_4$ (Imaging), $h_5, h_6$ (Administrative).
+    \item Private IPs: 10.0.0.1--10.0.0.6 (never change).
+    \item Public pool: 172.16.0.50--172.16.0.99 (50 addresses to draw from).
+    \item The controller runs in Docker with \texttt{--network host} so it can reach Mininet on the same machine.
 \end{itemize}
 
-\subsection{Zone-Based Hopping Configuration}
+\subsection{Hopping Intervals}
 
-Table~\ref{tab:zoneconfig} shows the configured IP hopping intervals for each hospital zone.
+Table~\ref{tab:zoneconfig} lists the rotation intervals we settled on after tuning.
 
 \begin{table}[htbp]
 \centering
@@ -280,176 +281,176 @@ Critical & High & $h_1, h_2$ & 120 \\
 \end{tabular}
 \end{table}
 
-\textit{Note}: The counter-intuitive assignment of longer intervals to higher-risk zones was adopted after experimental observation that extremely frequent rotations in the Critical zone caused synchronization delays between the controller and host agents, threatening the communication reliability that is paramount for life-critical systems. Longer intervals for Critical zone devices prioritize connection stability while still providing MTD protection. Lower-risk Administrative hosts tolerate more aggressive rotation.
+At first glance, giving the highest-risk zone the longest interval seems backwards. But in practice, we found that rotating Critical-zone IPs too fast caused brief sync delays between the controller and host agents---exactly the kind of hiccup you cannot afford on a ventilator network. Longer intervals for Critical hosts keep connections rock-solid while still providing meaningful defense. Administrative hosts, where a momentary blip is harmless, rotate the fastest.
 
-\subsection{Test Scenarios}
+\subsection{Attack Scenarios}
 
-Three primary attack scenarios, designed by Rushyendra et al., were evaluated:
+Rushyendra et al.\ designed three test scenarios:
 
 \begin{enumerate}
-    \item \textbf{Network reconnaissance}: Simulated Nmap host discovery scans (\texttt{nmap -sn 172.16.0.0/24}) executed at regular intervals to measure how IP rotation degrades scanning accuracy over time.
-    \item \textbf{Lateral movement}: Attempted sequential host compromise from an Administrative zone host toward Critical zone targets, measuring the success rate of reaching intended destinations when IPs change between attack stages.
-    \item \textbf{Communication stability}: Continuous REST-based secure transfers between host pairs during active IP rotation to measure packet delivery ratio and application-layer reliability.
+    \item \textbf{Reconnaissance}: Repeated Nmap scans (\texttt{nmap -sn 172.16.0.0/24}) to see how fast the attacker's host map goes stale.
+    \item \textbf{Lateral movement}: An attacker on an Administrative host tries to reach a Critical host, but the target's IP keeps changing between the scan step and the exploit step.
+    \item \textbf{Communication stability}: Continuous REST-based secure transfers between host pairs while IP rotation is running, to make sure legitimate traffic survives.
 \end{enumerate}
 
-\textit{Assumptions}: (i) The attacker does not have access to the SDN controller or the internal 10.0.0.0/24 address space. (ii) Scan durations are comparable to hopping intervals. (iii) The Mininet environment faithfully represents the forwarding behavior of a physical SDN deployment. (iv) Performance measurements on a single-switch topology represent a lower bound on latency for multi-switch deployments.
+\textit{Assumptions}: (i)~The attacker cannot reach the controller or the private subnet. (ii)~A single scan takes roughly as long as one rotation interval. (iii)~Mininet's forwarding behavior is representative of a real OpenFlow switch. (iv)~A single-switch topology gives a lower bound on latency; multi-switch deployments would add some overhead.
 
 \section{Results and Evaluation}
 
-\subsection{Reconnaissance Degradation}
+\subsection{Reconnaissance Gets Much Harder}
 
-Security testing was conducted by Rushyendra and Kishan using Nmap-based scanning. In the static baseline network, an Nmap host discovery scan consistently identified all 6 hosts with 100\% accuracy across repeated scans. Under MTD-HealthNet, scanning effectiveness degraded significantly as IP addresses rotated between scan cycles.
+Rushyendra and Kishan ran 20 consecutive Nmap scans, each lasting 15--20~seconds, against both the static baseline and the MTD-enabled network.
 
-Over 20 scan cycles (each scan taking approximately 15--20 seconds), the attacker's ability to maintain a consistent host map deteriorated as follows:
+In the static case, every scan found all six hosts---100\% accuracy, every time. With MTD-HealthNet running, the picture changed quickly:
 
 \begin{itemize}
-    \item \textbf{Scan cycle 1}: 6/6 hosts discovered (scan occurs before first rotation).
-    \item \textbf{Scan cycles 2--5}: Average 3.2/6 hosts discovered per scan as Administrative zone IPs begin rotating.
-    \item \textbf{Scan cycles 6--20}: Average 1.0/6 hosts consistently identifiable as all zones have undergone multiple rotations.
+    \item \textbf{First scan}: 6/6 hosts found (rotation has not kicked in yet).
+    \item \textbf{Scans 2--5}: About 3.2 out of 6 found on average, as Administrative IPs start rotating.
+    \item \textbf{Scans 6--20}: Only about 1 host found per scan once all zones have rotated at least once.
 \end{itemize}
 
-The steady-state reconnaissance accuracy converged to approximately \textbf{16.7\%} (1/6), representing an \textbf{83.3\% reduction} in attacker visibility. The residual discoverable host corresponds to the brief window during which a newly assigned IP has not yet rotated.
+Steady-state accuracy settled at roughly \textbf{16.7\%}---an \textbf{83.3\% drop} from the static baseline. The one host that still shows up corresponds to whatever address was just freshly assigned and has not yet rotated away.
 
-\subsection{Attack Effort Amplification}
+\subsection{Attackers Must Work Much Harder}
 
-Under a static network, an attacker requires a single complete scan to map all hosts. With MTD-HealthNet, the attacker must rescan after each rotation interval to maintain current knowledge. Given the minimum hopping interval of 80 seconds (Administrative zone) and an average scan duration of 18 seconds:
+In a static network, one scan is enough to map everything. With rotation, the attacker has to keep rescanning before the map expires. With an 80-second Administrative-zone interval and an 18-second scan:
 
 \begin{equation}
     E_M = \frac{80}{18} \approx 4.4\times \text{ (Administrative zone)}
 \end{equation}
 
-For the Critical zone with 120-second intervals:
+For the 120-second Critical zone:
 
 \begin{equation}
     E_M = \frac{120}{18} \approx 6.7\times \text{ (Critical zone)}
 \end{equation}
 
-The weighted average across all zones yields an attack effort multiplier of \textbf{4.7$\times$}, meaning the attacker must expend approximately 4.7 times the scanning effort compared to a static network to maintain equivalent reconnaissance accuracy.
+Averaged across all zones, the effort multiplier is \textbf{4.7$\times$}. In plain terms, the attacker spends nearly five times as long scanning for the same amount of useful intelligence.
 
-\subsection{Lateral Movement Disruption}
+\subsection{Lateral Movement Mostly Fails}
 
-Kishan conducted simulated lateral movement attacks from the Administrative zone toward the Critical zone were attempted in 15 trials. Each trial involved a three-stage attack: (1) scan to identify target, (2) wait for an opportunity window, (3) attempt connection to the identified IP.
+Kishan ran 15 lateral-movement trials. In each one, the attacker scanned from an Administrative host, identified a Critical-zone target, waited briefly, then tried to connect.
 
 \begin{itemize}
-    \item \textbf{Static baseline}: 15/15 successful connections (100\%).
-    \item \textbf{MTD-HealthNet}: 3/15 successful connections (\textbf{20\%}).
+    \item \textbf{Static network}: 15/15 succeeded (100\%).
+    \item \textbf{MTD-HealthNet}: 3/15 succeeded (\textbf{20\%}).
 \end{itemize}
 
-The 80\% failure rate under MTD conditions resulted from target IPs changing between the reconnaissance and exploitation phases. Additionally, the zone-based ACL policy blocked Administrative$\rightarrow$Critical zone traffic, providing a complementary defense layer.
+The 80\% failure rate comes from a simple cause: the target's IP changed between the scan and the connection attempt. On top of that, the ACL rules block Administrative$\rightarrow$Critical traffic outright, adding a second layer of protection.
 
-\subsection{Network Performance Overhead}
+\subsection{Performance Stays Acceptable}
 
-Table~\ref{tab:perfeval} summarizes the performance evaluation results.
+Table~\ref{tab:perfeval} puts the full picture in one place.
 
 \begin{table}[htbp]
 \centering
-\caption{Performance Evaluation: Static vs. MTD-HealthNet}
+\caption{Performance Evaluation: Static vs.\ MTD-HealthNet}
 \label{tab:perfeval}
 \begin{tabular}{lccc}
 \toprule
 \textbf{Metric} & \textbf{Static} & \textbf{MTD} & \textbf{Impact} \\
 \midrule
 Packet Delivery Ratio & 99.8\% & 97.8\% & \textbf{2.0\% decrease} \\
-Avg. RTT (steady) & 0.34 ms & 0.41 ms & +0.07 ms \\
-Avg. RTT (during hop) & --- & 2.8 ms & Transient spike \\
+Avg.\ RTT (steady) & 0.34 ms & 0.41 ms & +0.07 ms \\
+Avg.\ RTT (during hop) & --- & 2.8 ms & Transient spike \\
 Flow Update Latency & --- & 12.4 ms & Acceptable \\
-Recon. Accuracy & 100\% & 16.7\% & \textbf{83.3\% reduction} \\
+Recon.\ Accuracy & 100\% & 16.7\% & \textbf{83.3\% reduction} \\
 Lateral Movement Success & 100\% & 20\% & \textbf{80\% reduction} \\
 Attack Effort Multiplier & 1$\times$ & 4.7$\times$ & \textbf{4.7$\times$ increase} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Key performance observations, analyzed by Rushyendra et al.:
+Rushyendra et al.\ noted the following details:
 
 \begin{itemize}
-    \item The \textbf{2.0\% decrease in PDR} occurred exclusively during the brief transition window when old flow rules were being replaced. The shadow period mechanism limited this impact.
-    \item \textbf{RTT increased by 0.07~ms} on average during steady-state operation due to the additional NAT translation overhead. During IP transitions, transient RTT spikes of up to 2.8~ms were observed but resolved within 1--2 seconds.
-    \item \textbf{Flow update latency of 12.4~ms} represents the time from shuffle trigger to complete flow rule installation, which is well within acceptable bounds for healthcare applications where sub-second latency variations are tolerable.
-    \item Application-layer secure transfers (via \texttt{/sim/secure\_transfer}) maintained \textbf{100\% success rate} across all tests, confirming that the NAT translation mechanism preserved end-to-end communication integrity even during IP rotations.
+    \item The \textbf{2\% PDR dip} only happens in the brief window while flow rules are being swapped. The shadow period keeps it small.
+    \item Steady-state \textbf{RTT rises by just 0.07~ms} due to NAT header rewriting. During a hop, RTT can spike to 2.8~ms for a second or two before settling back down.
+    \item \textbf{12.4~ms flow update latency} is fast enough that no healthcare application would notice---most clinical protocols tolerate latency variations on the order of seconds, not milliseconds.
+    \item Every application-layer secure transfer we attempted succeeded with a \textbf{100\% delivery rate}, even mid-rotation. This confirms that the NAT layer keeps real communication intact.
 \end{itemize}
 
 \section{Case Studies}
 
-\subsection{Case Study 1: Ransomware Propagation Attempt}
+\subsection{Case 1: Ransomware Aimed at an EHR Server}
 
-\textit{Scenario}: An attacker compromises an Administrative workstation ($h_5$) and attempts to propagate ransomware to the Critical zone EHR server ($h_1$).
+\textit{Setup}: The attacker takes over an Administrative workstation ($h_5$) and wants to push ransomware to the Critical-zone EHR server ($h_1$).
 
-\textit{Static network}: The attacker scans the network, identifies $h_1$ at a fixed IP, and delivers the ransomware payload directly. Success rate: high.
+\textit{In a static network}: The attacker scans, finds $h_1$ at a fixed IP, and delivers the payload. Straightforward.
 
-\textit{Under MTD-HealthNet}: (1) The attacker scans and identifies $h_1$'s current public IP. (2) During the preparation phase for payload delivery (estimating 60--90 seconds for exploit crafting), $h_1$'s IP rotates (120s interval). (3) The attacker's crafted payload targets the \textit{old} IP, which now maps to no host or a different host. (4) Even if the attacker rescans, the zone-based ACL policy blocks Administrative$\rightarrow$Critical traffic, providing defense-in-depth. The ransomware delivery fails due to both stale reconnaissance and policy enforcement.
+\textit{With MTD-HealthNet}: The attacker scans and sees $h_1$ at, say, 172.16.0.57. Crafting the exploit takes 60--90~seconds. By then $h_1$'s IP has rotated (120\,s interval), so the payload hits a dead address. Even if the attacker rescans, the ACL blocks Administrative$\rightarrow$Critical traffic anyway. Two independent defenses must both fail for the attack to succeed.
 
-\subsection{Case Study 2: Internal Lateral Movement}
+\subsection{Case 2: Lateral Movement Through the Imaging Zone}
 
-\textit{Scenario}: An attacker with access to the Imaging zone ($h_3$) attempts to pivot toward other Imaging zone or Critical zone hosts to exfiltrate DICOM imaging data.
+\textit{Setup}: The attacker is on $h_3$ (Imaging) and wants to reach $h_4$ to steal DICOM data.
 
-\textit{Under MTD-HealthNet}: (1) The attacker identifies $h_4$ (Imaging zone peer) at IP 172.16.0.62. (2) After 100 seconds, $h_4$'s IP rotates to 172.16.0.78. (3) The attacker's lateral movement attempt to 172.16.0.62 fails---the IP either is unassigned or now maps to a different host in a different zone. (4) The attacker must rescan, but by the time the new IP is discovered, the next rotation may have already occurred. The result is a persistent cycle of stale intelligence that significantly increases the time and effort required for successful lateral movement.
+\textit{With MTD-HealthNet}: The attacker sees $h_4$ at 172.16.0.62. After 100~seconds, $h_4$ moves to 172.16.0.78. The connection to the old address fails silently. By the time the attacker scans again and finds the new IP, another rotation may already be underway. The attacker gets caught in a loop of stale information.
 
-\subsection{Case Study 3: Network Scanning Disruption}
+\subsection{Case 3: Persistent Network Scanning}
 
-\textit{Scenario}: An external attacker performs continuous Nmap scans to build a network map of the hospital LAN.
+\textit{Setup}: An outsider runs continuous Nmap scans to build a complete network map.
 
-\textit{Under MTD-HealthNet}: (1) First scan discovers 6 hosts at specific IPs. (2) Second scan (80+ seconds later) finds that Administrative zone IPs have changed; the attacker's map becomes partially invalid. (3) By the third scan, Imaging zone IPs have also rotated. (4) After 120 seconds, all zones have undergone at least one rotation. The attacker's accumulated network map contains a mixture of current and stale entries, with steady-state accuracy degrading to approximately 16.7\%. The NAT layer additionally prevents the attacker from determining the true internal network structure, as all visible IPs are from the 172.16.0.0/16 pool and reveal no information about the private 10.0.0.0/24 topology.
+\textit{With MTD-HealthNet}: The first scan gets all six hosts. Eighty seconds later, two Administrative IPs have changed. After 100~seconds, Imaging IPs rotate too. By 120~seconds, every zone has shuffled at least once. The attacker's map is now a patchwork of current and expired entries, with only about 1~in~6 entries still valid. Worse, all visible IPs come from the 172.16.0.0/16 pool, revealing nothing about the real 10.0.0.0/24 topology underneath.
 
 \section{Discussion}
 
-\subsection{Strengths}
+\subsection{What Works Well}
 
 \begin{itemize}
-    \item \textbf{Reduced predictability}: Continuous IP rotation ensures that reconnaissance data becomes stale within one hopping interval, forcing attackers to repeatedly invest scanning effort.
-    \item \textbf{Dual-layer address isolation}: The private/public IP separation ensures that even if public IPs are compromised, the internal network structure remains concealed.
-    \item \textbf{Zone-differentiated policy}: Risk-stratified rotation intervals accommodate the varying availability requirements of different hospital departments.
-    \item \textbf{Application-layer continuity}: The transparent NAT mechanism preserves active sessions through IP transitions, validated through actual data transfers rather than ICMP tests alone.
-    \item \textbf{Auditability}: Complete shuffle history stored in SQLite provides forensic traceability of all IP assignments---a requirement for HIPAA compliance.
+    \item \textbf{Stale intelligence}: Any scan result expires within one rotation interval, forcing the attacker to start over.
+    \item \textbf{Hidden internals}: Even a successful scan only reveals the public pool; the private layout stays secret.
+    \item \textbf{Tunable per zone}: Administrators can tighten rotation for risky zones and relax it for stable ones, matching each department's tolerance for disruption.
+    \item \textbf{Real data survives}: We proved this at the application layer, not just with ping.
+    \item \textbf{Full audit trail}: Every IP change is logged in SQLite, supporting the kind of traceability HIPAA demands.
 \end{itemize}
 
 \subsection{Limitations}
 
 \begin{itemize}
-    \item \textbf{Single controller dependency}: The centralized Ryu controller represents a single point of failure; controller downtime halts all MTD operations and NAT management.
-    \item \textbf{Single-switch topology}: The current implementation uses a single OVS switch, which does not fully represent the multi-switch, multi-subnet topology of real hospital networks.
-    \item \textbf{Legacy device compatibility}: Medical devices with hardcoded IP dependencies may require additional proxy mechanisms to function within the dynamic addressing environment.
-    \item \textbf{Limited IP pool entropy}: With a pool of 50 addresses and 6 hosts, the address space entropy is $\log_2\binom{50}{6} \approx 22.7$ bits per rotation, which provides moderate but not cryptographic-strength randomness.
-    \item \textbf{Synchronization overhead}: Rapid rotation intervals ($<$30 seconds) caused observable synchronization delays between the controller and host agents, limiting the practical minimum hopping interval.
+    \item \textbf{Single controller}: If the Ryu process crashes, all MTD activity and NAT translations stop until it restarts.
+    \item \textbf{One switch}: Our testbed uses a single OVS instance, which is simpler than a real hospital's multi-switch fabric.
+    \item \textbf{Legacy devices}: Equipment that hardcodes peer IPs will need a proxy layer we have not yet built.
+    \item \textbf{Address-space entropy}: With 50~pool addresses and 6~hosts, each rotation offers about $\log_2\binom{50}{6} \approx 22.7$ bits of randomness---decent, but not cryptographic.
+    \item \textbf{Minimum interval}: Below roughly 30~seconds, sync delays between the controller and host agents become noticeable.
 \end{itemize}
 
-\subsection{Security-Performance Trade-off}
+\subsection{Is the Trade-off Worth It?}
 
-The experimental results, analyzed by Rushyendra and Jeeshitha, demonstrate a favorable trade-off: a modest 2.0\% reduction in PDR and 0.07~ms average RTT increase yield an 83.3\% reduction in reconnaissance accuracy and 80\% reduction in lateral movement success. For hospital environments where sub-second latency variations are acceptable (most healthcare applications are not latency-critical at the millisecond level), this trade-off strongly favors MTD deployment.
+Rushyendra and Jeeshitha weighed the costs against the gains. Giving up 2\% of packet delivery and adding 0.07~ms of steady-state latency buys an 83.3\% cut in reconnaissance accuracy and an 80\% cut in lateral-movement success. In a hospital, where clinical protocols easily tolerate millisecond-level jitter, this is a favorable deal.
 
-The zone-based approach provides an important tuning mechanism: administrators can adjust hopping intervals per zone to optimize the security-stability balance based on specific clinical requirements.
+The zone-based design makes the trade-off adjustable. If a particular ward needs rock-solid connectivity, its rotation interval can be lengthened. If a low-risk subnet can handle more churn, its interval can be shortened to harden it further.
 
 \section{Conclusion}
 
-This paper presented MTD-HealthNet, developed by Rushyendra et al., a zone-based Moving Target Defense framework for hospital LANs that employs dynamic IP hopping and NAT randomization within an SDN architecture. The system continuously mutates the externally visible network topology while maintaining stable internal addressing, achieving an 83.3\% reduction in reconnaissance accuracy, a 4.7$\times$ increase in attacker effort, and an 80\% reduction in lateral movement success, with only a 2.0\% decrease in packet delivery ratio and negligible steady-state latency overhead.
+MTD-HealthNet, developed by Rushyendra et al., shows that a hospital network does not have to be a sitting target. By shuffling public-facing IPs on a zone-aware schedule and hiding the real topology behind NAT, the system cuts reconnaissance accuracy by 83.3\%, raises attacker effort by 4.7$\times$, and blocks 80\% of lateral-movement attempts---all while keeping packet delivery above 97.8\% and adding negligible latency in normal operation.
 
-The prototype demonstrates that Moving Target Defense is a viable and practical approach for enhancing hospital network security without requiring hardware upgrades or disrupting clinical operations. The zone-differentiated rotation strategy provides administrators with fine-grained control over the security-availability trade-off for different hospital departments.
+The prototype confirms that dynamic address rotation is practical for healthcare environments. It requires no new hardware, imposes minimal overhead, and gives administrators per-zone control over the security--stability balance.
 
 \section{Future Work}
 
-Based on the findings of this work, Jeeshitha and Siddardha identify several directions for future research:
+Jeeshitha and Siddardha outline several next steps:
 
 \begin{itemize}
-    \item \textbf{AI-driven adaptive MTD}: Integrating machine learning models to dynamically adjust hopping intervals based on detected threat levels and network anomaly scores, replacing fixed timer-based rotation.
-    \item \textbf{IDS/IPS integration}: Coupling the MTD engine with intrusion detection systems to trigger immediate IP rotation for hosts under active attack, creating a reactive defense layer complementary to the proactive rotation.
-    \item \textbf{Multi-switch scalability}: Extending the architecture to multi-switch, multi-subnet topologies representative of real hospital campuses, and measuring controller scalability (CPU/memory overhead) with increasing host counts.
-    \item \textbf{Dynamic port hopping}: Incorporating transport-layer port randomization alongside IP hopping, with transparent port rewriting via the SDN controller to preserve session state.
-    \item \textbf{Formal security analysis}: Applying game-theoretic models to compute optimal hopping intervals as a function of attacker scanning speed and network size, providing provable security guarantees.
-    \item \textbf{Real-world deployment}: Piloting MTD-HealthNet on a physical hospital testbed to validate performance under realistic traffic loads, latency constraints, and regulatory compliance requirements.
+    \item \textbf{Adaptive intervals}: Use anomaly-detection models to speed up rotation when a threat is detected and slow it down when the network is calm, replacing fixed timers with intelligent ones.
+    \item \textbf{IDS integration}: Let the intrusion detection system trigger an immediate shuffle for any host it flags, adding a reactive layer on top of the proactive schedule.
+    \item \textbf{Scaling up}: Test on multi-switch, multi-subnet topologies and measure how controller CPU and memory usage grow with host count.
+    \item \textbf{Port randomization}: Extend the shuffle to transport-layer ports, rewriting them transparently so that applications stay unaware.
+    \item \textbf{Formal analysis}: Apply game-theoretic models to compute provably optimal rotation intervals as a function of attacker scan speed and network size.
+    \item \textbf{Real-world pilot}: Deploy on a physical hospital testbed to validate under realistic traffic, latency constraints, and regulatory requirements.
 \end{itemize}
 
 \section*{Author Contributions}
 
-\textbf{Rushyendra} conceptualized the overall system architecture, designed and implemented the Ryu SDN controller (\texttt{mtd\_controller.py}), developed the NAT translation engine with DNAT/SNAT flow rule management, built the zone-based IP hopping mechanism, implemented the REST API and secure transfer simulation, created the web-based monitoring dashboard, performed system integration and debugging, and led the experimental evaluation and quantitative analysis. \textbf{Kishan} co-developed the Mininet network topology (\texttt{mininet\_topo.py}), implemented the host agent communication module, designed the DHCP simulation and DNS resolution subsystems, developed the zone scheduler (\texttt{zone\_scheduler.py}), contributed to OpenFlow flow table optimization, performed security testing including Nmap-based reconnaissance and lateral movement simulations, and co-authored the System Architecture and Implementation sections. \textbf{Siddardha} conducted the literature survey and comparative analysis of existing MTD techniques, identified research gaps in healthcare network security, formulated the threat model and security metrics, authored the Related Work and Methodology sections, performed policy configuration and ACL rule design (\texttt{policies.yml}), and contributed to the Discussion and Case Studies sections. \textbf{Jeeshitha} contributed to the background study on hospital network vulnerabilities and attack vectors, assisted with the literature survey and reference management, developed the policy debugging tool (\texttt{debug\_policy.py}), performed connectivity and route verification testing, contributed to the Results and Analysis documentation, and co-authored the Conclusion and Future Work sections. All authors reviewed and approved the final manuscript.
+\textbf{Rushyendra} led the project end-to-end. He designed the overall architecture, wrote the Ryu SDN controller (\texttt{mtd\_controller.py}), built the NAT engine and IP hopping logic, created the REST API and secure-transfer simulation, developed the monitoring dashboard, carried out system integration and debugging, and drove the experimental evaluation. \textbf{Kishan} co-built the Mininet topology (\texttt{mininet\_topo.py}) and host-agent module, set up DHCP simulation and DNS handling, developed the zone scheduler (\texttt{zone\_scheduler.py}), tuned OpenFlow rules, ran Nmap and lateral-movement tests, and co-wrote the architecture and implementation sections. \textbf{Siddardha} owned the literature survey and gap analysis, shaped the threat model and security metrics, wrote the Related Work and Methodology sections, designed the ACL policies (\texttt{policies.yml}), and contributed to the Discussion and Case Studies. \textbf{Jeeshitha} supported the background study and reference work, built the policy debugging tool (\texttt{debug\_policy.py}), ran connectivity and route verification tests, documented the Results and Analysis, and co-wrote the Conclusion and Future Work. All authors reviewed and approved the final manuscript.
 
 \section*{Acknowledgment}
 
-The authors thank Mr.\ Akhil K J, Assistant Professor, TIFAC-CORE in Cyber Security, Amrita Vishwa Vidyapeetham, for his guidance and supervision throughout this project. The authors also acknowledge Prof.\ M.\ Sethumadhavan, Professor and Head, TIFAC-CORE in Cyber Security, for his support and leadership.
+We thank Mr.\ Akhil K J, Assistant Professor, TIFAC-CORE in Cyber Security, Amrita Vishwa Vidyapeetham, for his steady guidance throughout this project, and Prof.\ M.\ Sethumadhavan, Professor and Head of TIFAC-CORE in Cyber Security, for his support and encouragement.
 
 \begin{thebibliography}{00}
 
 \bibitem{dishington2019ipmux}
-C.~Dishington, D.~P.~Sharma, D.~S.~Kim, J.-H.~Cho, T.~J.~Moore, and F.~F.~Nelson, ``Security and performance assessment of IP multiplexing moving target defence in software defined networks,'' in \textit{Proc. 2019 18th IEEE Int. Conf. Trust, Security and Privacy in Computing and Communications / 13th IEEE Int. Conf. Big Data Science and Engineering (TrustCom/BigDataSE)}, IEEE, 2019, doi: 10.1109/trustcom/bigdatase.2019.00046.
+C.~Dishington, D.~P.~Sharma, D.~S.~Kim, J.-H.~Cho, T.~J.~Moore, and F.~F.~Nelson, ``Security and performance assessment of IP multiplexing moving target defence in software defined networks,'' in \textit{Proc.\ 2019 18th IEEE Int.\ Conf.\ Trust, Security and Privacy in Computing and Communications / 13th IEEE Int.\ Conf.\ Big Data Science and Engineering (TrustCom/BigDataSE)}, IEEE, 2019, doi: 10.1109/trustcom/bigdatase.2019.00046.
 
 \bibitem{zal2024lossless}
 M.~\.{Z}al, M.~Michalski, and P.~Zwierzykowski, ``Implementation of a lossless moving target defense mechanism,'' \textit{Electronics}, MDPI AG, 2024, doi: 10.3390/electronics13050918.
@@ -461,7 +462,7 @@ C.~Lei, H.-Q.~Zhang, J.-L.~Tan, Y.-C.~Zhang, and X.-H.~Liu, ``Moving target defe
 G.-L.~Cai, B.-S.~Wang, W.~Hu, and T.-Z.~Wang, ``Moving target defense: State of the art and characteristics,'' \textit{Frontiers of Information Technology \& Electronic Engineering}, Zhejiang University Press, 2016, doi: 10.1631/fitee.1601321.
 
 \bibitem{huang2021legacy}
-C.-W.~Huang, I.-H.~Liu, J.-S.~Li, C.-C.~Wu, C.-F.~Li, and C.-G.~Liu, ``A legacy infrastructure-based mechanism for moving target defense,'' in \textit{Proc. 2021 IEEE 3rd Eurasia Conf. Biomedical Engineering, Healthcare and Sustainability (ECBIOS)}, IEEE, 2021, doi: 10.1109/ecbios51820.2021.9510261.
+C.-W.~Huang, I.-H.~Liu, J.-S.~Li, C.-C.~Wu, C.-F.~Li, and C.-G.~Liu, ``A legacy infrastructure-based mechanism for moving target defense,'' in \textit{Proc.\ 2021 IEEE 3rd Eurasia Conf.\ Biomedical Engineering, Healthcare and Sustainability (ECBIOS)}, IEEE, 2021, doi: 10.1109/ecbios51820.2021.9510261.
 
 \end{thebibliography}
 
