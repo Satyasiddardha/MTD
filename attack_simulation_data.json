@@ -1,0 +1,200 @@
+{
+  "scenario_1": {
+    "steady_yield": 71.1,
+    "reduction": 28.9,
+    "effort_multiplier": 5.6,
+    "scan_data": [
+      {
+        "scan": 1,
+        "time": 0,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 2,
+        "time": 30,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 3,
+        "time": 60,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 4,
+        "time": 90,
+        "hosts_found": 2,
+        "yield_pct": 33.3
+      },
+      {
+        "scan": 5,
+        "time": 120,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 6,
+        "time": 150,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 7,
+        "time": 180,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 8,
+        "time": 210,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 9,
+        "time": 240,
+        "hosts_found": 2,
+        "yield_pct": 33.3
+      },
+      {
+        "scan": 10,
+        "time": 270,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 11,
+        "time": 300,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 12,
+        "time": 330,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 13,
+        "time": 360,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 14,
+        "time": 390,
+        "hosts_found": 2,
+        "yield_pct": 33.3
+      },
+      {
+        "scan": 15,
+        "time": 420,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 16,
+        "time": 450,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 17,
+        "time": 480,
+        "hosts_found": 2,
+        "yield_pct": 33.3
+      },
+      {
+        "scan": 18,
+        "time": 510,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      },
+      {
+        "scan": 19,
+        "time": 540,
+        "hosts_found": 6,
+        "yield_pct": 100.0
+      },
+      {
+        "scan": 20,
+        "time": 570,
+        "hosts_found": 4,
+        "yield_pct": 66.7
+      }
+    ]
+  },
+  "scenario_2": {
+    "acl_blocked": true,
+    "success_rate": 0.0,
+    "defenses": 2
+  },
+  "scenario_3": {
+    "acl_allows": true,
+    "single_attempt_500MB": 0.0,
+    "with_retry": 100.0,
+    "rotation_interval": 100
+  },
+  "scenario_4": {
+    "auth": "none",
+    "rce": true,
+    "privilege": "root",
+    "internal_ips_exposed": "6/6",
+    "secrets_extracted": true,
+    "mtd_relevant": false,
+    "success_rate": 100.0
+  },
+  "scenario_5": {
+    "info_disclosed": [
+      "hosts.*.mac",
+      "hosts.*.ip",
+      "hosts.*.private_ip",
+      "hosts.*.port",
+      "hosts.*.risk",
+      "hosts.*.interval",
+      "hosts.*.next_hop_in",
+      "nat_table",
+      "dns",
+      "network_config.gateway",
+      "network_config.gw_mac"
+    ],
+    "pool_exhaustion_requests": 234,
+    "pool_exhaustion_time_s": 35.1,
+    "forced_rotation_possible": true,
+    "mtd_defeated": true,
+    "success_rate": 100.0
+  },
+  "scenario_6": {
+    "mac_rotated": false,
+    "correlation_accuracy": 100.0,
+    "cycles_to_full_track": 1,
+    "code_evidence": "OFPActionSetField(ipv4_src=...) only, no eth_src"
+  },
+  "scenario_7": {
+    "arp_spoofing": {
+      "success": false,
+      "reason": "_flood_packet_out is no-op (line 895)"
+    },
+    "ip_spoofing": {
+      "success": "partial",
+      "type": "blind one-way injection"
+    },
+    "two_way_spoof": {
+      "success": false,
+      "reason": "replies go to real host"
+    },
+    "missing_defense": "anti-spoofing rule for 172.16.0.0/16 from internal ports"
+  },
+  "scenario_8": {
+    "secret_extractable": true,
+    "hash_check_pass": true,
+    "session_check_pass": true,
+    "origin_check_pass": true,
+    "hmac_check_pass": true,
+    "all_checks_pass": true,
+    "detectable": false,
+    "success_rate": 100.0
+  }
+}
